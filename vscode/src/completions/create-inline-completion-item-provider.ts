@@ -6,25 +6,24 @@ import {
     NEVER,
     type PickResolvedConfiguration,
     type UnauthenticatedAuthStatus,
+    configOverwrites,
     createDisposables,
     promiseFactoryToObservable,
     skipPendingOperation,
     switchMap,
 } from '@sourcegraph/cody-shared'
 
-import { logDebug } from '../log'
+import type { PlatformContext } from '../extension.common'
 import type { CodyStatusBar } from '../services/StatusBar'
 
-import type { PlatformContext } from '../extension.common'
 import { InlineCompletionItemProvider } from './inline-completion-item-provider'
+import { autocompleteOutputChannelLogger } from './output-channel-logger'
 import { createProvider } from './providers/shared/create-provider'
 import { registerAutocompleteTraceView } from './tracer/traceView'
 
 interface InlineCompletionItemProviderArgs {
     config: PickResolvedConfiguration<{ configuration: true }>
-    authStatus:
-        | UnauthenticatedAuthStatus
-        | Pick<AuthenticatedAuthStatus, 'authenticated' | 'endpoint' | 'configOverwrites'>
+    authStatus: UnauthenticatedAuthStatus | Pick<AuthenticatedAuthStatus, 'authenticated' | 'endpoint'>
     platform: Pick<PlatformContext, 'extensionClient'>
     statusBar: CodyStatusBar
 }
@@ -50,7 +49,7 @@ export function createInlineCompletionItemProvider({
 
     if (!authStatus.authenticated) {
         if (!authStatus.pendingValidation) {
-            logDebug('AutocompleteProvider:notSignedIn', 'You are not signed in.')
+            autocompleteOutputChannelLogger.logDebug('createProvider', 'You are not signed in.')
         }
 
         return NEVER
@@ -61,11 +60,14 @@ export function createInlineCompletionItemProvider({
         return await getInlineCompletionItemProviderFilters(configuration.autocompleteLanguages)
     }).pipe(
         switchMap(documentFilters =>
-            createProvider({ config: { configuration }, authStatus }).pipe(
+            createProvider({ config: { configuration }, authStatus, configOverwrites }).pipe(
                 skipPendingOperation(),
                 createDisposables(providerOrError => {
                     if (providerOrError instanceof Error) {
-                        logDebug('AutocompleteProvider', providerOrError.message)
+                        autocompleteOutputChannelLogger.logError(
+                            'createProvider',
+                            providerOrError.message
+                        )
 
                         if (configuration.isRunningInsideAgent) {
                             const configString = JSON.stringify({ configuration }, null, 2)

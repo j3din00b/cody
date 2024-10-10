@@ -12,6 +12,7 @@ import {
     ClientConfigSingleton,
     type CodeCompletionsClient,
     type CodyClientConfig,
+    type CodyLLMSiteConfiguration,
     type CompletionParameters,
     type CompletionResponse,
     CompletionStopReason,
@@ -32,6 +33,7 @@ import { DEFAULT_VSCODE_SETTINGS } from '../../testutils/mocks'
 import type { SupportedLanguage } from '../../tree-sitter/grammars'
 import { updateParseTreeCache } from '../../tree-sitter/parse-tree-cache'
 import { getParser } from '../../tree-sitter/parser'
+import { AutocompleteStageRecorder, type CompletionLogID } from '../analytics-logger'
 import { ContextMixer } from '../context/context-mixer'
 import { DefaultContextStrategyFactory } from '../context/context-strategy'
 import { getCompletionIntent } from '../doc-context-getters'
@@ -42,7 +44,6 @@ import {
     TriggerKind,
     getInlineCompletions as _getInlineCompletions,
 } from '../get-inline-completions'
-import { AutocompleteStageRecorder, type CompletionLogID } from '../logger'
 import { createProvider as createAnthropicProvider } from '../providers/anthropic'
 import { createProvider as createFireworksProvider } from '../providers/fireworks'
 import { pressEnterAndGetIndentString } from '../providers/shared/hot-streak'
@@ -65,6 +66,7 @@ export type Params = Partial<Omit<InlineCompletionsParams, 'document' | 'positio
     ) => Generator<CompletionResponse> | AsyncGenerator<CompletionResponse>
     configuration?: Parameters<typeof mockResolvedConfig>[0]
     authStatus?: AuthenticatedAuthStatus
+    configOverwrites?: CodyLLMSiteConfiguration | null
     documentUri?: URI
 }
 
@@ -96,6 +98,7 @@ export function params(
         takeSuggestWidgetSelectionIntoAccount,
         configuration: config,
         documentUri = testFileUri('test.ts'),
+        configOverwrites = null,
         ...restParams
     }: Params = {}
 ): ParamsResult {
@@ -166,6 +169,7 @@ export function params(
             (config?.configuration?.autocompleteAdvancedModel as AutocompleteProviderID) || 'anthropic',
         source: 'local-editor-settings',
         authStatus,
+        configOverwrites,
     })
 
     provider.client = client
@@ -420,8 +424,12 @@ export function initCompletionProviderConfig({
     mockClientCapabilities(CLIENT_CAPABILITIES_FIXTURE)
 }
 
-export function getMockedGenerateCompletionsOptions(): GenerateCompletionsOptions {
-    const { position, document, docContext, triggerKind } = params('const value = █', [])
+export function getMockedGenerateCompletionsOptions({
+    configOverwrites,
+}: Pick<Params, 'configOverwrites'> = {}): GenerateCompletionsOptions {
+    const { position, document, docContext, triggerKind } = params('const value = █', [], {
+        configOverwrites,
+    })
     return {
         position,
         document,

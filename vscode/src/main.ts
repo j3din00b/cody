@@ -17,6 +17,7 @@ import {
     contextFiltersProvider,
     createDisposables,
     currentAuthStatus,
+    currentUserProductSubscription,
     distinctUntilChanged,
     featureFlagProvider,
     fromVSCodeEvent,
@@ -78,11 +79,11 @@ import type { PlatformContext } from './extension.common'
 import { configureExternalServices } from './external-services'
 import { isRunningInsideAgent } from './jsonrpc/isRunningInsideAgent'
 import type { SymfRunner } from './local-context/symf'
-import { logDebug, logError } from './log'
 import { MinionOrchestrator } from './minion/MinionOrchestrator'
 import { PoorMansBash } from './minion/environment'
 import { CodyProExpirationNotifications } from './notifications/cody-pro-expiration'
 import { showSetupNotification } from './notifications/setup-notification'
+import { logDebug, logError } from './output-channel-logger'
 import { initVSCodeGitApi } from './repository/git-extension-api'
 import { authProvider } from './services/AuthProvider'
 import { CharactersLogger } from './services/CharactersLogger'
@@ -574,6 +575,7 @@ function registerUpgradeHandlers(disposables: vscode.Disposable[]): void {
         // Check if user has just moved back from a browser window to upgrade cody pro
         vscode.window.onDidChangeWindowState(async ws => {
             const authStatus = currentAuthStatus()
+            const sub = await currentUserProductSubscription()
             if (ws.focused && isDotCom(authStatus) && authStatus.authenticated) {
                 const res = await graphqlClient.getCurrentUserCodyProEnabled()
                 if (res instanceof Error) {
@@ -581,7 +583,7 @@ function registerUpgradeHandlers(disposables: vscode.Disposable[]): void {
                     return
                 }
                 // Re-auth if user's cody pro status has changed
-                const isCurrentCodyProUser = !authStatus.userCanUpgrade
+                const isCurrentCodyProUser = sub && !sub.userCanUpgrade
                 if (res && res.codyProEnabled !== isCurrentCodyProUser) {
                     authProvider.refresh()
                 }

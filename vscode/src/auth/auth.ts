@@ -17,7 +17,7 @@ import {
 } from '@sourcegraph/cody-shared'
 import { isSourcegraphToken } from '../chat/protocol'
 import { newAuthStatus } from '../chat/utils'
-import { logDebug } from '../log'
+import { logDebug } from '../output-channel-logger'
 import { authProvider } from '../services/AuthProvider'
 import { localStorage } from '../services/LocalStorageProvider'
 import { secretStorage } from '../services/SecretStorageProvider'
@@ -417,12 +417,7 @@ export async function validateCredentials(
         clientState: config.clientState,
     })
 
-    const [{ enabled: siteHasCodyEnabled, version: siteVersion }, codyLLMConfiguration, userInfo] =
-        await Promise.all([
-            client.isCodyEnabled(signal),
-            client.getCodyLLMConfiguration(signal),
-            client.getCurrentUserInfo(signal),
-        ])
+    const userInfo = await client.getCurrentUserInfo(signal)
     signal?.throwIfAborted()
 
     if (isError(userInfo) && isNetworkLikeError(userInfo)) {
@@ -451,54 +446,12 @@ export async function validateCredentials(
             pendingValidation: false,
         }
     }
-    if (!siteHasCodyEnabled) {
-        logDebug(
-            'auth',
-            `Authentication succeeded, but endpoint ${config.auth.serverEndpoint} reports Cody is not enabled`
-        )
-        vscode.window.showErrorMessage(
-            `Cody is not enabled on this Sourcegraph instance (${config.auth.serverEndpoint}). Ask a site administrator to enable it.`
-        )
-        return { authenticated: false, endpoint: config.auth.serverEndpoint, pendingValidation: false }
-    }
 
     logDebug('auth', `Authentication succeeed to endpoint ${config.auth.serverEndpoint}`)
-
-    const configOverwrites = isError(codyLLMConfiguration) ? undefined : codyLLMConfiguration
-
-    if (!isDotCom(config.auth.serverEndpoint)) {
-        return newAuthStatus({
-            ...userInfo,
-            endpoint: config.auth.serverEndpoint,
-            siteVersion,
-            configOverwrites,
-            authenticated: true,
-            hasVerifiedEmail: false,
-            userCanUpgrade: false,
-        })
-    }
-
-    logDebug('auth', `Checking Cody subscription status for user ${userInfo.username}`)
-    const proStatus = await client.getCurrentUserCodySubscription(signal)
-    signal?.throwIfAborted()
-    if (isError(proStatus)) {
-        logDebug('auth', 'Error checking Cody subscription status', proStatus.message)
-    }
-    const isActiveProUser =
-        proStatus !== null &&
-        'plan' in proStatus &&
-        proStatus.plan === 'PRO' &&
-        proStatus.status !== 'PENDING'
-    logDebug(
-        'auth',
-        `Checked Cody subscription status for user ${userInfo.username}: isActiveProUser=${isActiveProUser}`
-    )
     return newAuthStatus({
         ...userInfo,
-        authenticated: true,
         endpoint: config.auth.serverEndpoint,
-        siteVersion,
-        configOverwrites,
-        userCanUpgrade: !isActiveProUser,
+        authenticated: true,
+        hasVerifiedEmail: false,
     })
 }

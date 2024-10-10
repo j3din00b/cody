@@ -1,5 +1,6 @@
+import type * as vscode from 'vscode'
+
 import type {
-    AuthStatus,
     BillingCategory,
     BillingProduct,
     CodyCommand,
@@ -7,8 +8,8 @@ import type {
     ContextMentionProviderID,
     CurrentUserCodySubscription,
     Model,
+    ModelAvailabilityStatus,
     ModelUsage,
-    SerializedChatMessage,
     SerializedChatTranscript,
     event,
 } from '@sourcegraph/cody-shared'
@@ -18,11 +19,9 @@ import type {
     TelemetryEventMarketingTrackingInput,
     TelemetryEventParameters,
 } from '@sourcegraph/telemetry'
-import type * as vscode from 'vscode'
 
-import type { ModelAvailabilityStatus } from '@sourcegraph/cody-shared/dist/models/modelsService'
 import type { ExtensionMessage, WebviewMessage } from '../chat/protocol'
-import type { CompletionBookkeepingEvent, CompletionItemID } from '../completions/logger'
+import type { CompletionBookkeepingEvent, CompletionItemID } from '../completions/analytics-logger'
 import type { FixupTaskID } from '../non-stop/FixupTask'
 import type { CodyTaskState } from '../non-stop/state'
 
@@ -63,21 +62,6 @@ export type ClientRequests = {
     // Deletes chat by its ID and returns newly updated chat history list
     // Primary is used only in cody web client
     'chat/delete': [{ chatId: string }, ChatExportResult[]]
-
-    // TODO: JetBrains no longer uses this, consider deleting it.
-    // Similar to `chat/new` except it starts a new chat session from an
-    // existing transcript. The chatID matches the `chatID` property of the
-    // `type: 'transcript'` ExtensionMessage that is sent via
-    // `webview/postMessage`. Returns a new *panel* ID, which can be used to
-    // send a chat message via `chat/submitMessage`.
-    'chat/restore': [
-        {
-            modelID?: string | undefined | null
-            messages: SerializedChatMessage[]
-            chatID: string
-        },
-        string,
-    ]
 
     'chat/models': [{ modelUsage: ModelUsage }, { models: ModelAvailabilityStatus[] }]
     'chat/export': [null | { fullHistory: boolean }, ChatExportResult[]]
@@ -251,14 +235,20 @@ export type ClientRequests = {
     // whether to accept a completion.
     'testing/autocomplete/setCompletionVisibilityDelay': [{ delay: number }, null]
 
+    // For testing purposes, returns the current autocomplete provider configuration.
+    'testing/autocomplete/providerConfig': [
+        null,
+        { id: string; legacyModel: string; configSource: string },
+    ]
+
     // Updates the extension configuration and returns the new
     // authentication status, which indicates whether the provided credentials are
     // valid or not. The agent can't support autocomplete or chat if the credentials
     // are invalid.
-    'extensionConfiguration/change': [ExtensionConfiguration, AuthStatus | null]
+    'extensionConfiguration/change': [ExtensionConfiguration, ProtocolAuthStatus | null]
 
     // Returns the current authentication status without making changes to it.
-    'extensionConfiguration/status': [null, AuthStatus | null]
+    'extensionConfiguration/status': [null, ProtocolAuthStatus | null]
 
     // Returns the json schema of the extension confi
     'extensionConfiguration/getSettingsSchema': [null, string]
@@ -637,8 +627,7 @@ export interface WebviewNativeConfig {
 export interface ServerInfo {
     name: string
     authenticated?: boolean | undefined | null
-    codyVersion?: string | undefined | null
-    authStatus?: AuthStatus | undefined | null
+    authStatus?: ProtocolAuthStatus | undefined | null
 }
 
 export interface ExtensionConfiguration {
@@ -746,6 +735,53 @@ export interface Position {
 export interface Range {
     start: Position
     end: Position
+}
+
+// Equivalent to our internal `AuthStatus` type but using a string discriminator
+// instead of a boolean discriminator. Boolean discriminators complicate
+// deserializing in other languages. We have custom codegen for string
+// discriminators but not boolean ones.
+// It's good practice to be more intentional about the Agent protocol types
+// anyways.  As a rule of thumb, we should try to avoid leaking internal types
+// that are constantly making tiny changes that are irrelevant for the other
+// clients anyways.
+export type ProtocolAuthStatus = ProtocolAuthenticatedAuthStatus | ProtocolUnauthenticatedAuthStatus
+
+export interface ProtocolAuthenticatedAuthStatus {
+    status: 'authenticated'
+    authenticated: boolean
+    endpoint: string
+
+    username: string
+
+    /**
+     * Used to enable Fireworks tracing for Sourcegraph teammates on DotCom.
+     * https://readme.fireworks.ai/docs/enabling-tracing
+     */
+    isFireworksTracingEnabled?: boolean | null | undefined
+    hasVerifiedEmail?: boolean | null | undefined
+    requiresVerifiedEmail?: boolean | null | undefined
+
+    primaryEmail?: string | null | undefined
+    displayName?: string | null | undefined
+    avatarURL?: string | null | undefined
+
+    pendingValidation: boolean
+
+    /**
+     * Organizations on the instance that the user is a member of.
+     */
+    organizations?: { name: string; id: string }[] | null | undefined
+}
+
+export interface ProtocolUnauthenticatedAuthStatus {
+    status: 'unauthenticated'
+    authenticated: boolean
+    endpoint: string
+    showNetworkError?: boolean | null | undefined
+
+    showInvalidAccessTokenError?: boolean | null | undefined
+    pendingValidation: boolean
 }
 
 export interface ProtocolTextDocument {
