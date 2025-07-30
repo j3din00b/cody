@@ -983,13 +983,14 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
                         })
                         return confirmation
                     },
-                    postDone: async (op?: { abort: boolean }): Promise<void> => {
+                    postDone: async (): Promise<void> => {
                         // Mark the end of the span for chat.handleUserMessage here, as we do not await
                         // the entire stream of chat messages being sent to the webview.
                         // The span is concluded when the stream is complete.
                         span.end()
-                        if (op?.abort || signal.aborted) {
-                            throw new Error('aborted')
+                        if (this.chatBuilder?.isEmpty()) {
+                            this.postViewTranscript()
+                            return
                         }
                         // HACK(beyang): This conditional preserves the behavior from when
                         // all the response generation logic was handled in this method.
@@ -1669,13 +1670,14 @@ export class ChatController implements vscode.Disposable, vscode.WebviewViewProv
     }
 
     public clearAndRestartSession(chatMessages?: ChatMessage[]): void {
-        this.cancelSubmitOrEditOperation()
         // Only clear the session if session is not empty.
         if (!this.chatBuilder?.isEmpty()) {
+            this.saveSession()
             this.chatBuilder = new ChatBuilder(this.chatBuilder.selectedModel, undefined, chatMessages)
             this.lastKnownTokenUsage = undefined
             this.postViewTranscript()
         }
+        this.cancelSubmitOrEditOperation()
     }
 
     // #endregion

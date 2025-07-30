@@ -1,9 +1,12 @@
 import type { SerializedChatTranscript, UserLocalHistory } from '@sourcegraph/cody-shared'
 import { MOCK_API, useExtensionAPI } from '@sourcegraph/prompt-editor'
-import { fileSave } from 'browser-fs-access'
 import { Observable } from 'observable-fns'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { downloadChatHistory } from './downloadChatHistory'
+
+// Mock document and URL objects before they're used
+global.document = { createElement: vi.fn() } as any
+global.URL = { createObjectURL: vi.fn(), revokeObjectURL: vi.fn() } as any
 
 // Mock the useExtensionAPI function
 vi.mock('@sourcegraph/prompt-editor', () => ({
@@ -11,23 +14,53 @@ vi.mock('@sourcegraph/prompt-editor', () => ({
     useExtensionAPI: vi.fn(),
 }))
 
-vi.mock('browser-fs-access', () => ({
-    fileSave: vi.fn(),
-}))
-
 describe('downloadChatHistory', () => {
+    // Mock DOM APIs
+    const originalCreateElement = document.createElement
+    const originalCreateObjectURL = URL.createObjectURL
+    const originalRevokeObjectURL = URL.revokeObjectURL
+
+    // Mock elements and functions
+    let mockAnchor: HTMLAnchorElement
+    let mockObjectURL: string
+    let mockClickFn = vi.fn()
+
     // Setup mocks before each test
     beforeEach(() => {
         // Mock date for consistent timestamp in filename
         vi.useFakeTimers()
         vi.setSystemTime(new Date('2025-04-01T12:34:56Z'))
+
+        // Mock anchor element
+        mockClickFn = vi.fn()
+        mockAnchor = {
+            href: '',
+            download: '',
+            target: '',
+            click: mockClickFn,
+        } as unknown as HTMLAnchorElement
+
+        // Mock URL.createObjectURL
+        mockObjectURL = 'blob:mock-url'
+        URL.createObjectURL = vi.fn().mockReturnValue(mockObjectURL)
+        URL.revokeObjectURL = vi.fn()
+
+        // Mock document.createElement
+        document.createElement = vi.fn().mockImplementation((tagName: string) => {
+            if (tagName === 'a') {
+                return mockAnchor
+            }
+            return originalCreateElement.call(document, tagName)
+        })
     })
 
     // Restore original functions after each test
     afterEach(() => {
         vi.useRealTimers()
+        document.createElement = originalCreateElement
+        URL.createObjectURL = originalCreateObjectURL
+        URL.revokeObjectURL = originalRevokeObjectURL
         vi.resetAllMocks()
-        vi.resetModules()
     })
 
     it('should download chat history as a JSON file with correct filename', async () => {
@@ -64,19 +97,18 @@ describe('downloadChatHistory', () => {
         }
         vi.mocked(useExtensionAPI).mockImplementation(() => mockExtensionAPI)
 
-        const mockSaveFn = vi.fn()
-        vi.mocked(fileSave).mockImplementation(mockSaveFn)
-
         // Call the function
         await downloadChatHistory(useExtensionAPI())
 
-        expect(mockSaveFn).toHaveBeenCalledTimes(1)
-        expect(mockSaveFn).toHaveBeenCalledWith(
-            expect.any(Blob),
-            expect.objectContaining({
-                fileName: 'cody-chat-history-2025-04-01T12-34-56.json',
-            })
-        )
+        // Verify Blob was created with correct content
+        expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
+        // Verify anchor element was configured correctly
+        expect(mockAnchor.href).toBe(mockObjectURL)
+        expect(mockAnchor.download).toBe('cody-chat-history-2025-04-01T12-34-56.json')
+        expect(mockAnchor.target).toBe('_blank')
+
+        // Verify click was called to trigger download
+        expect(mockClickFn).toHaveBeenCalledTimes(1)
     })
 
     it('should not download anything if chat history is empty', async () => {
@@ -90,14 +122,12 @@ describe('downloadChatHistory', () => {
             userHistory: () => Observable.of(mockUserHistory),
         }
 
-        const mockSaveFn = vi.fn()
-        vi.mocked(fileSave).mockImplementation(mockSaveFn)
-
         // Call the function
         await downloadChatHistory(mockExtensionAPI)
 
         // Verify no download was attempted
-        expect(mockSaveFn).not.toHaveBeenCalled()
+        expect(URL.createObjectURL).not.toHaveBeenCalled()
+        expect(mockClickFn).not.toHaveBeenCalled()
     })
 
     it('should not download anything if user history is null', async () => {
@@ -108,13 +138,11 @@ describe('downloadChatHistory', () => {
         }
         vi.mocked(useExtensionAPI).mockImplementation(() => mockExtensionAPI)
 
-        const mockSaveFn = vi.fn()
-        vi.mocked(fileSave).mockImplementation(mockSaveFn)
-
         // Call the function
         await downloadChatHistory(useExtensionAPI())
 
         // Verify no download was attempted
-        expect(mockSaveFn).not.toHaveBeenCalled()
+        expect(URL.createObjectURL).not.toHaveBeenCalled()
+        expect(mockClickFn).not.toHaveBeenCalled()
     })
 })

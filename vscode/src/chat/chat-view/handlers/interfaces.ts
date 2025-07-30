@@ -28,7 +28,7 @@ export interface AgentHandlerDelegate {
     postStatuses(steps: ProcessingStep[]): void
     postMessageInProgress(message: ChatMessage): void
     postRequest(step: ProcessingStep): Promise<boolean>
-    postDone(ops?: { abort: boolean }): void
+    postDone(): void
 
     /**
      * An experimental way to post updates to the message in progress.

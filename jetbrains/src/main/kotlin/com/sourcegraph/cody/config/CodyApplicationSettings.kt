@@ -21,7 +21,8 @@ data class CodyApplicationSettings(
     var blacklistedLanguageIds: List<String> = listOf(),
     var shouldAcceptNonTrustedCertificatesAutomatically: Boolean = false,
     var isOffScreenRenderingEnabled: Boolean = true,
-    var updateMode: UpdateMode = UpdateMode.Automatic
+    var updateMode: UpdateMode = UpdateMode.Automatic,
+    var automaticallyDisableJcefOutOfProcess: Boolean = true
 ) : PersistentStateComponent<CodyApplicationSettings> {
   override fun getState(): CodyApplicationSettings = this
 
@@ -41,6 +42,7 @@ data class CodyApplicationSettings(
         state.shouldAcceptNonTrustedCertificatesAutomatically
     this.isOffScreenRenderingEnabled = state.isOffScreenRenderingEnabled
     this.updateMode = state.updateMode
+    this.automaticallyDisableJcefOutOfProcess = state.automaticallyDisableJcefOutOfProcess
   }
 
   companion object {

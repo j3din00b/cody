@@ -66,7 +66,7 @@ export class ChatHandler implements AgentHandler {
             delegate.postError(contextResult.error, 'transcript')
         }
         if (contextResult.abort) {
-            delegate.postDone({ abort: contextResult.abort })
+            delegate.postDone()
             return
         }
         const corpusContext = contextResult.contextItems ?? []

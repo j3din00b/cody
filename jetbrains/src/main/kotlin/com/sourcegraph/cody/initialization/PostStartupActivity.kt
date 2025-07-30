@@ -6,10 +6,12 @@ import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.ex.EditorEventMulticasterEx
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.ProjectActivity
+import com.intellij.openapi.util.registry.Registry
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.sourcegraph.cody.agent.CodyAgentService
 import com.sourcegraph.cody.auth.PlgEsAccess
 import com.sourcegraph.cody.auth.deprecated.DeprecatedCodyAccountManager
+import com.sourcegraph.cody.config.CodyApplicationSettings
 import com.sourcegraph.cody.config.CodySettingsFileChangeListener
 import com.sourcegraph.cody.config.CodyWindowAdapter
 import com.sourcegraph.cody.config.migration.ClientConfigCleanupMigration
@@ -49,6 +51,10 @@ class PostStartupActivity : ProjectActivity {
               account.credentialAttributes(), null)
         }
       }
+    }
+
+    if (CodyApplicationSettings.instance.automaticallyDisableJcefOutOfProcess) {
+      Registry.get("ide.browser.jcef.out-of-process.enabled").setValue(false)
     }
 
     CodyWindowAdapter.addWindowFocusListener(project)
